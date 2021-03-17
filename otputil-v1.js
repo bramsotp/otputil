@@ -6,7 +6,7 @@
 */
 
 window.otputil = (function(){
-    var otputilVersion = '1.0.0-ALPHA-DEV';
+    var otputilVersion = '1.0.0-ALPHA2-DEV';
 
     var public = {
         version: otputilVersion
@@ -98,14 +98,14 @@ window.otputil = (function(){
     function info(arg) {
         // this function returns values directly, but in a future version it may need to return a promise
         arg = Object.assign({
-            //taskId:undefined,
-            //task:undefined,
+            //taskId:undefined, // at the moment, this goes in custom
+            //task:undefined, // at the moment, this goes in custom
             jatos:true, // true/false; maybe in future 'extended' or 'all' to load ALL values for batch/study/batchjson etc
             jspsych:true, // true/false
             otputil:true, // true/false
             //browser:false,
-            //geo:false, // 'country', true/false
-            //ip:false,
+            //geo:false, // 'country', true/false // see https://geo.ipify.org/
+            //ip:false, // TODO see https://www.ipify.org/
             //custom:undefined,
             //style:'properties' // properties/json
             //filter: // maybe later
@@ -245,7 +245,7 @@ window.otputil = (function(){
             //encryptResults: false,
             // on_encrypted: undefined, // runs after encryption () // TODO if needed
             jatosSendResults: true, // true/false/append
-            jatosContinue: 'smart', // true/false/smart/{component:ID}/{position:pos}; could also be a name though?; could handle fn that gets value
+            jatosContinue: true, // true/false/smart[deprecated]/{component:ID}/{position:pos}; could also be a name though?; could handle fn that gets value
         }, arg||{});
 
         var fn = async function(data) {
@@ -299,30 +299,30 @@ window.otputil = (function(){
 
             if (!!arg.jatosContinue) {
                 var handled = false;
-                if (arg.jatosContinue === true) {
+                if (arg.jatosContinue === true || arg.jatosContinue === 'smart') {
                     console.debug('Calling startNextComponent');
                     jatos.startNextComponent();
                     handled = true;
                 }
-                else if (arg.jatosContinue === 'smart') {
-                    var nextPos = undefined;
-                    // jatos.componentPos is 1-based. we want to find next component is active. so we start
-                    // with component index (0-based) equal to jatos.componentPos
-                    for (var i=jatos.componentPos; i<jatos.componentList.length; i++) {
-                        if (jatos.componentList.active) {
-                            nextPos = i+1; // did I mention that componentPos is 1-based for some reason?
-                            break;
-                        }
-                    }
-                    if (nextPos !== undefined) {
-                        console.debug('Found "smart" next active compoment, calling startComponentByPos for', nextPos);
-                        jatos.startComponentByPos(nextPos);
-                    } else {
-                        console.debug('Did not find any "smart" next active compoment, calling endStudy');
-                        jatos.endStudy();
-                    }
-                    handled = true;
-                }
+                // else if (arg.jatosContinue === 'smart') {
+                //     var nextPos = undefined;
+                //     // jatos.componentPos is 1-based. we want to find next component is active. so we start
+                //     // with component index (0-based) equal to jatos.componentPos
+                //     for (var i=jatos.componentPos; i<jatos.componentList.length; i++) {
+                //         if (jatos.componentList[i].active) {
+                //             nextPos = i+1; // did I mention that componentPos is 1-based for some reason?
+                //             break;
+                //         }
+                //     }
+                //     if (nextPos !== undefined) {
+                //         console.debug('Found "smart" next active compoment, calling startComponentByPos for', nextPos);
+                //         jatos.startComponentByPos(nextPos);
+                //     } else {
+                //         console.debug('Did not find any "smart" next active compoment, calling endStudy');
+                //         jatos.endStudy();
+                //     }
+                //     handled = true;
+                // }
                 else if (typeof(arg.jatosContinue) === 'object') {
                     console.debug('Calling startComponent or startComponentByPos', arg.jatosContinue);
 
