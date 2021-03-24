@@ -3,10 +3,12 @@
         -> otputil tracks whether public key loaded
         -> otpencrypt does not check
 
+    Changes
+    v1.1.0 - added "timestamp" option for infoTrial; generateKey accepts password; setPrivateKey returns the key(s)
 */
 
 window.otputil = (function(){
-    var otputilVersion = '1.0.0-ALPHA2-DEV';
+    var otputilVersion = '1.1.0';
 
     var public = {
         version: otputilVersion
@@ -100,6 +102,7 @@ window.otputil = (function(){
         arg = Object.assign({
             //taskId:undefined, // at the moment, this goes in custom
             //task:undefined, // at the moment, this goes in custom
+            timestamp:true, // true/false
             jatos:true, // true/false; maybe in future 'extended' or 'all' to load ALL values for batch/study/batchjson etc
             jspsych:true, // true/false
             otputil:true, // true/false
@@ -114,6 +117,14 @@ window.otputil = (function(){
         var infoData = {};
         if (typeof(arg.custom) === 'object') {
             mergeValueSet(infoData, arg.custom, 'custom');
+        }
+        if (arg.timestamp) {
+            var d = new Date();
+            mergeValueSet(infoData, {
+                epoch_ms: d.getTime(),
+                iso_string: d.toISOString(),
+                locale_string: d.toLocaleString()
+            }, 'timestamp');
         }
         if (arg.jatos) {
             mergeValueSet(infoData, {version: jatos.version}, 'jatos');
@@ -438,6 +449,7 @@ window.otpencrypt = (function(){
         }
         var keyResult = await openpgp.key.readArmored(keyArmored);
         privateKeys = keyResult.keys;
+        return privateKeys;
     }
 
     async function decrypt(encryptedArmored) {
@@ -454,8 +466,16 @@ window.otpencrypt = (function(){
         if (typeof(args.name) !== 'string') {
             throw new Error('generateKey: "name" argument is required');
         }
-        var k = openpgp.generateKey({ curve: curve,  userIds: [{ name: args.name, email: args.email, comment: args.comment }] });
-
+        var k = await openpgp.generateKey({
+            passphrase: args.passphrase,
+            curve: args.curve,
+            userIds: [{
+                name: args.name,
+                email: args.email,
+                comment: args.comment
+            }]
+        });
+        return k;
     }
 
     // EXPORT
