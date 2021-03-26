@@ -4,11 +4,12 @@
         -> otpencrypt does not check
 
     Changes
-    v1.1.0 - added "timestamp" option for infoTrial; generateKey accepts password; setPrivateKey returns the key(s)
+    v1.2.0 - add "jatos_workerType" for infoTrial
+    v1.1.0 - add "timestamp" option for infoTrial; generateKey accepts password; setPrivateKey returns the key(s)
 */
 
 window.otputil = (function(){
-    var otputilVersion = '1.1.0';
+    var otputilVersion = '1.2.0';
 
     var public = {
         version: otputilVersion
@@ -127,7 +128,10 @@ window.otputil = (function(){
             }, 'timestamp');
         }
         if (arg.jatos) {
-            mergeValueSet(infoData, {version: jatos.version}, 'jatos');
+            mergeValueSet(infoData, {
+                version: jatos.version,
+                workerType: jatos.workerType
+            }, 'jatos');
             mergeValueSet(infoData, jatos.addJatosIds({}), 'jatos');
         }
         if (arg.jspsych) {
