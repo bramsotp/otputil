@@ -4,12 +4,13 @@
         -> otpencrypt does not check
 
     Changes
+    v1.3.0 - add "browser_userAgent" for infoTrial
     v1.2.0 - add "jatos_workerType" for infoTrial
     v1.1.0 - add "timestamp" option for infoTrial; generateKey accepts password; setPrivateKey returns the key(s)
 */
 
 window.otputil = (function(){
-    var otputilVersion = '1.2.0';
+    var otputilVersion = '1.3.0';
 
     var public = {
         version: otputilVersion
@@ -106,8 +107,8 @@ window.otputil = (function(){
             timestamp:true, // true/false
             jatos:true, // true/false; maybe in future 'extended' or 'all' to load ALL values for batch/study/batchjson etc
             jspsych:true, // true/false
+            browser:true, // true/false
             otputil:true, // true/false
-            //browser:false,
             //geo:false, // 'country', true/false // see https://geo.ipify.org/
             //ip:false, // TODO see https://www.ipify.org/
             //custom:undefined,
@@ -136,6 +137,9 @@ window.otputil = (function(){
         }
         if (arg.jspsych) {
             mergeValueSet(infoData, {version: jsPsychVersion()}, 'jspsych');
+        }
+        if (arg.browser) {
+            mergeValueSet(infoData, {userAgent: navigator.userAgent}, 'browser');
         }
         if (arg.otputil) {
             mergeValueSet(infoData, {version: otputilVersion}, 'otputil');
