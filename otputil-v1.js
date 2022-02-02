@@ -5,6 +5,7 @@
     log the custom order code in infoTrial, if present?
 
     Changes
+    v1.5.0 - remove 1000ms delay before calling jatos.onLoad(); adapt to work with jsPsych 7.0 (keeping 6.x compatibility); add debugData option for trialFinisher
     v1.4.0 - add custom order via jatos study json; catch error/unhandledrejection and display via jatos.showOverlay; use strict
     v1.3.0 - add "browser_userAgent" for infoTrial
     v1.2.0 - add "jatos_workerType" for infoTrial
@@ -13,7 +14,7 @@
 
 'use strict';
 {
-    const otputilVersion = '1.4.0';
+    const otputilVersion = '1.5.0';
 
     const w = window;
 
@@ -27,7 +28,9 @@
                 text: "ERROR: " + e.message,
                 showImg: false
                 });
-            } catch (err) {}
+            } catch (err) {
+                console.log('Error calling jatos.showOverlay', err);
+            }
         }
     });
 
@@ -41,7 +44,9 @@
                 text: "ERROR: " + e.reason.message,
                 showImg: false
                 });
-            } catch (err) {}
+            } catch (err) {
+                console.log('Error calling jatos.showOverlay', err);
+            }
             //         jatos.log("Via 'unhandledrejection' event in " + e.filename + ":" +
             //             e.lineno + " - " + e.message);
             //     });
@@ -51,7 +56,7 @@
     // @ts-ignore
     const jatos = w.jatos;
     // @ts-ignore
-    const jsPsych = w.jsPsych;
+    let jsPsych = w.jsPsych;
     // @ts-ignore
     const openpgp = w.openpgp;
 
@@ -69,6 +74,13 @@
 
         async function prepare(arg) {
             arg = arg || {};
+
+            if (arg.jsPsych) {
+                jsPsych = arg.jsPsych;
+            } else {
+                if (!jsPsych) { throw new Error('otputil did not find jsPsych!'); }
+            }
+            initOtpCallFunction();
 
             console.log(`otputil version ${otputilVersion}`);
 
@@ -123,7 +135,9 @@
                     reject('JATOS not loaded!');
                     return;
                 }
-                jatos.onLoad(() => resolve());
+                setTimeout(function() {
+                    jatos.onLoad(() => resolve());
+                }, 0);
             });
         }
 
@@ -226,7 +240,7 @@
 
         function jsPsychDataTrial(func) {
             return {
-                type: 'otp-call-function',
+                type: w['jsPsychOtpCallFunction'] || 'otp-call-function',
                 async: true,
                 func: func
             };
@@ -235,7 +249,7 @@
         // on_finish > encrypt > on_encrypted
         /**
          *
-         * @param {{ encryptIf: string | boolean | function; on_finish: (arg0: object) => void; on_encrypted: (arg0: function) => void; sendPartial: boolean; }} arg
+         * @param {{ encryptIf: string | boolean | function; on_finish: (arg0: object) => void; on_encrypted: (arg0: function) => void; sendPartial: boolean; debugData: boolean; }} arg
          */
         function trialFinisher(arg) {
             arg = Object.assign({
@@ -243,6 +257,7 @@
                 on_finish: undefined, // custom
                 on_encrypted: undefined, // n.b. runs asynchronously
                 sendPartial: false, // false/true
+                debugData: false // false/true
             }, arg||{});
 
             if (arg.encryptIf === 'never') {
@@ -284,6 +299,11 @@
                 // on_encrypted
                 if (typeof(arg.on_encrypted) === 'function') {
                     arg.on_encrypted(data);
+                }
+
+                // debugData
+                if (arg.debugData) {
+                    console.debug('trial data=', data);
                 }
 
                 // sendPartial
@@ -747,57 +767,120 @@
      *
      **/
 
-    (function(){
+    function initOtpCallFunction() {
         if (jsPsych) {
-            jsPsych.plugins['otp-call-function'] = (function () {
-                var plugin = {};
+            const jsPsychModule = window['jsPsychModule'];
+            if (jsPsychModule) {
+                // adapted from 7.0.0 call-function
+                window['jsPsychOtpCallFunction'] = (function (jspsych) {
+                    'use strict';
 
-                plugin.info = {
-                    name: 'call-function',
-                    description: '',
-                    parameters: {
-                        func: {
-                            type: jsPsych.plugins.parameterType.FUNCTION,
-                            pretty_name: 'Function',
-                            default: undefined,
-                            description: 'Function to call'
+                    const info = {
+                        name: "otp-call-function",
+                        parameters: {
+                            /** Function to call */
+                            func: {
+                                type: jspsych.ParameterType.FUNCTION,
+                                pretty_name: "Function",
+                                default: undefined,
+                            },
+                            /** Is the function call asynchronous? */
+                            async: {
+                                type: jspsych.ParameterType.BOOL,
+                                pretty_name: "Asynchronous",
+                                default: false,
+                            },
                         },
-                        async: {
-                            type: jsPsych.plugins.parameterType.BOOL,
-                            pretty_name: 'Asynchronous',
-                            default: false,
-                            description: 'Is the function call asynchronous?'
+                    };
+                    /**
+                     * **call-function**
+                     *
+                     * jsPsych plugin for calling an arbitrary function during a jsPsych experiment
+                     *
+                     * @author Josh de Leeuw
+                     * @see {@link https://www.jspsych.org/plugins/jspsych-call-function/ call-function plugin documentation on jspsych.org}
+                     */
+                    class CallFunctionPlugin {
+                        constructor(jsPsych) {
+                            this.jsPsych = jsPsych;
+                        }
+                        trial(display_element, trial) {
+                            //trial.post_trial_gap = 0;  // TO DO: TS error: number not assignable to type any[]. I don't think this param should be an array..?
+                            var return_val;
+                            const end_trial = () => {
+                                var trial_data = {
+                                    value: return_val,
+                                };
+                                this.jsPsych.finishTrial(trial_data);
+                            };
+                            if (trial.async) {
+                                var done = function (data) {
+                                    return_val = data;
+                                    end_trial();
+                                };
+                                trial.func(done);
+                            }
+                            else {
+                                return_val = trial.func();
+                                end_trial();
+                            }
                         }
                     }
-                }
+                    CallFunctionPlugin.info = info;
 
-                plugin.trial = function (display_element, trial) {
-                    trial.post_trial_gap = 0;
-                    var return_val;
+                    return CallFunctionPlugin;
 
-                    if (trial.async) {
-                        var done = function (data) {
-                            return_val = data;
+                })(jsPsychModule);
+            } else {
+                jsPsych.plugins['otp-call-function'] = (function () {
+                    var plugin = {};
+
+                    plugin.info = {
+                        name: 'call-function',
+                        description: '',
+                        parameters: {
+                            func: {
+                                type: jsPsych.plugins.parameterType.FUNCTION,
+                                pretty_name: 'Function',
+                                default: undefined,
+                                description: 'Function to call'
+                            },
+                            async: {
+                                type: jsPsych.plugins.parameterType.BOOL,
+                                pretty_name: 'Asynchronous',
+                                default: false,
+                                description: 'Is the function call asynchronous?'
+                            }
+                        }
+                    }
+
+                    plugin.trial = function (display_element, trial) {
+                        trial.post_trial_gap = 0;
+                        var return_val;
+
+                        if (trial.async) {
+                            var done = function (data) {
+                                return_val = data;
+                                end_trial();
+                            }
+                            trial.func(done);
+                        } else {
+                            return_val = trial.func();
                             end_trial();
                         }
-                        trial.func(done);
-                    } else {
-                        return_val = trial.func();
-                        end_trial();
-                    }
 
-                    function end_trial() {
-                        var trial_data = {
-                            value: return_val
-                        };
+                        function end_trial() {
+                            var trial_data = {
+                                value: return_val
+                            };
 
-                        jsPsych.finishTrial(trial_data);
-                    }
-                };
+                            jsPsych.finishTrial(trial_data);
+                        }
+                    };
 
-                return plugin;
-            })();
+                    return plugin;
+                })();
+            }
         }
-    })();
-
+    }
 }
