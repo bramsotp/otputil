@@ -5,6 +5,7 @@
     log the custom order code in infoTrial, if present?
 
     Changes
+    v1.6.0 - add getSessionVar, setSessionVar
     v1.5.0 - remove 1000ms delay before calling jatos.onLoad(); adapt to work with jsPsych 7.0 (keeping 6.x compatibility); add debugData option for trialFinisher
     v1.4.0 - add custom order via jatos study json; catch error/unhandledrejection and display via jatos.showOverlay; use strict
     v1.3.0 - add "browser_userAgent" for infoTrial
@@ -14,7 +15,7 @@
 
 'use strict';
 {
-    const otputilVersion = '1.5.0';
+    const otputilVersion = '1.6.0';
 
     const w = window;
 
@@ -154,6 +155,17 @@
             }
             bits.push(randomChars(8));
             return bits.join('-');
+        }
+
+        function getSessionVar(key) {
+            return jatos.studySessionData[key] !== undefined? jatos.studySessionData[key] :
+                    jatos.componentJsonInput[key] !== undefined? jatos.componentJsonInput[key] :
+                    jatos.studyJsonInput[key] !== undefined? jatos.studyJsonInput[key] :
+                    undefined;
+        }
+
+        function setSessionVar(key, value) {
+            jatos.studySessionData[key] = value;
         }
 
         // UTIL
@@ -477,6 +489,8 @@
         _public.infoTrial = infoTrial;
         _public.trialFinisher = trialFinisher;
         _public.taskFinisher = taskFinisher;
+        _public.getSessionVar = getSessionVar;
+        _public.setSessionVar = setSessionVar;
         return _public;
     // @ts-ignore
     })();
