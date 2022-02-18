@@ -5,6 +5,7 @@
     log the custom order code in infoTrial, if present?
 
     Changes
+    v1.6.1 - add optional defaultValue argument to getSessionVar
     v1.6.0 - add getSessionVar, setSessionVar
     v1.5.0 - remove 1000ms delay before calling jatos.onLoad(); adapt to work with jsPsych 7.0 (keeping 6.x compatibility); add debugData option for trialFinisher
     v1.4.0 - add custom order via jatos study json; catch error/unhandledrejection and display via jatos.showOverlay; use strict
@@ -15,7 +16,7 @@
 
 'use strict';
 {
-    const otputilVersion = '1.6.0';
+    const otputilVersion = '1.6.1';
 
     const w = window;
 
@@ -157,11 +158,11 @@
             return bits.join('-');
         }
 
-        function getSessionVar(key) {
+        function getSessionVar(key, defaultValue) {
             return jatos.studySessionData[key] !== undefined? jatos.studySessionData[key] :
                     jatos.componentJsonInput[key] !== undefined? jatos.componentJsonInput[key] :
                     jatos.studyJsonInput[key] !== undefined? jatos.studyJsonInput[key] :
-                    undefined;
+                    defaultValue;
         }
 
         function setSessionVar(key, value) {
