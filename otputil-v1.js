@@ -5,6 +5,7 @@
     log the custom order code in infoTrial, if present?
 
     Changes
+    v1.7.0 - infoTrial includes participantId from sessionData if present
     v1.6.1 - add optional defaultValue argument to getSessionVar
     v1.6.0 - add getSessionVar, setSessionVar
     v1.5.0 - remove 1000ms delay before calling jatos.onLoad(); adapt to work with jsPsych 7.0 (keeping 6.x compatibility); add debugData option for trialFinisher
@@ -209,6 +210,10 @@
                     iso_string: d.toISOString(),
                     locale_string: d.toLocaleString()
                 }, 'timestamp');
+            }
+            const participantId = getSessionVar('participantId');
+            if (participantId !== undefined) {
+                infoData.participantId = participantId;
             }
             if (arg.jatos) {
                 mergeValueSet(infoData, {
