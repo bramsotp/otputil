@@ -5,6 +5,7 @@
     log the custom order code in infoTrial, if present?
 
     Changes
+    v1.7.1 - use sessionData.participant_id instead of participantId
     v1.7.0 - infoTrial includes participantId from sessionData if present
     v1.6.1 - add optional defaultValue argument to getSessionVar
     v1.6.0 - add getSessionVar, setSessionVar
@@ -211,9 +212,9 @@
                     locale_string: d.toLocaleString()
                 }, 'timestamp');
             }
-            const participantId = getSessionVar('participantId');
+            const participantId = getSessionVar('participant_id');
             if (participantId !== undefined) {
-                infoData.participantId = participantId;
+                infoData.participant_id = participantId;
             }
             if (arg.jatos) {
                 mergeValueSet(infoData, {
