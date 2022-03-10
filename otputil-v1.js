@@ -1,61 +1,93 @@
-/* TODO
-    handle missing PGP? already does?
-        -> otputil tracks whether public key loaded
-        -> otpencrypt does not check
-    log the custom order code in infoTrial, if present?
-
-    Changes
-    v1.7.1 - use sessionData.participant_id instead of participantId
-    v1.7.0 - infoTrial includes participantId from sessionData if present
-    v1.6.1 - add optional defaultValue argument to getSessionVar
-    v1.6.0 - add getSessionVar, setSessionVar
-    v1.5.0 - remove 1000ms delay before calling jatos.onLoad(); adapt to work with jsPsych 7.0 (keeping 6.x compatibility); add debugData option for trialFinisher
-    v1.4.0 - add custom order via jatos study json; catch error/unhandledrejection and display via jatos.showOverlay; use strict
-    v1.3.0 - add "browser_userAgent" for infoTrial
-    v1.2.0 - add "jatos_workerType" for infoTrial
-    v1.1.0 - add "timestamp" option for infoTrial; generateKey accepts password; setPrivateKey returns the key(s)
-*/
-
 'use strict';
-{
-    const otputilVersion = '1.6.1';
+(function() {
+
+    const otputilVersion = '1.8.0';
+
+    /*  Changes
+        v1.8.0 - try to upload error stack traces to jatos
+        v1.7.1 - use sessionData.participant_id instead of participantId
+        v1.7.0 - infoTrial includes participantId from sessionData if present
+        v1.6.1 - add optional defaultValue argument to getSessionVar
+        v1.6.0 - add getSessionVar, setSessionVar
+        v1.5.0 - remove 1000ms delay before calling jatos.onLoad(); adapt to work with jsPsych 7.0 (keeping 6.x compatibility); add debugData option for trialFinisher
+        v1.4.0 - add custom order via jatos study json; catch error/unhandledrejection and display via jatos.showOverlay; use strict
+        v1.3.0 - add "browser_userAgent" for infoTrial
+        v1.2.0 - add "jatos_workerType" for infoTrial
+        v1.1.0 - add "timestamp" option for infoTrial; generateKey accepts password; setPrivateKey returns the key(s)
+
+        TODO
+        handle missing PGP? already does?
+            -> otputil tracks whether public key loaded
+            -> otpencrypt does not check
+        log the custom order code in infoTrial, if present?
+
+    */
 
     const w = window;
 
-    w.addEventListener('error', function (e) {
-        console.log('caught error', e);
-        // @ts-ignore
-        const jatos = w.jatos;
-        if (jatos) {
-            try {
-                jatos.showOverlay({
-                text: "ERROR: " + e.message,
-                showImg: false
-                });
-            } catch (err) {
-                console.log('Error calling jatos.showOverlay', err);
-            }
-        }
-    });
 
-    w.addEventListener('unhandledrejection', function (e) {
-        console.log('caught unhandledrejection', e);
-        // @ts-ignore
-        const jatos = w.jatos;
+    // CATCH ERRORS
+
+    const observedErrors = [];
+    const ERRORS_ARRAY_MAX = 100;
+
+    function observeError(e) {
+        console.log('caught error', e);
+        window['dbgLastError'] = e;
+
+        let added = false;
+        if (observedErrors.length < ERRORS_ARRAY_MAX) {
+            observedErrors.push(new Date().toISOString());
+            observedErrors.push(navigator.userAgent);
+            observedErrors.push(e.type);
+            observedErrors.push(e.message);
+            if (e.error && e.error.stack) {
+                observedErrors.push(e.error.stack);
+            }
+            if (e.reason && e.reason.stack) {
+                observedErrors.push(e.reason.stack);
+            }
+            added = true;
+        }
+
+        const jatos = w['jatos'];
         if (jatos) {
             try {
+                let displayMessage = '';
+                if (e.type !== 'error') {
+                    displayMessage += `(${e.type}) `;
+                }
+                if (e.reason) {
+                    displayMessage += e.reason.message;
+                } else {
+                    displayMessage += e.message;
+                }
                 jatos.showOverlay({
-                text: "ERROR: " + e.reason.message,
-                showImg: false
+                    text: "ERROR: " + displayMessage,
+                    showImg: false
                 });
+
+                if (added) {
+                    sendObservedErrors();
+                }
             } catch (err) {
                 console.log('Error calling jatos.showOverlay', err);
             }
-            //         jatos.log("Via 'unhandledrejection' event in " + e.filename + ":" +
-            //             e.lineno + " - " + e.message);
-            //     });
         }
-    });
+    }
+
+    function sendObservedErrors() {
+        const errorsConcat = observedErrors.join("\n\n");
+        const errorsBlob = new Blob([errorsConcat]);
+        const filename = 'ERRORS.txt';
+        jatos.uploadResultFile(errorsBlob, filename);
+    }
+
+    w.addEventListener('error', observeError);
+    w.addEventListener('unhandledrejection', observeError);
+
+
+    // CREATE OTPUTIL
 
     // @ts-ignore
     const jatos = w.jatos;
@@ -904,4 +936,4 @@
             }
         }
     }
-}
+})();
