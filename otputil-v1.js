@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '1.8.0';
+    const otputilVersion = '1.8.1';
 
     /*  Changes
+        v1.8.1 - export otpencrypt.encrypt()
         v1.8.0 - try to upload error stack traces to jatos
         v1.7.1 - use sessionData.participant_id instead of participantId
         v1.7.0 - infoTrial includes participantId from sessionData if present
@@ -587,7 +588,6 @@
             else {
                 dataString = String(data);
             }
-            //console.log('encrypting:', dataString);
 
             return openpgp.encrypt({
                 message: openpgp.message.fromText(dataString),
@@ -612,7 +612,6 @@
                     Object.keys(newData).forEach(x => {trialData[x] = newData[x]});
                 });
             }
-            //console.log('replaced data!', d);
         }
 
         function finish() {
@@ -663,6 +662,7 @@
         _public.setPublicKey = setPublicKey;
         _public.setPrivateKey = setPrivateKey;
         _public.encryptTrialData = encryptTrialData;
+        _public.encrypt = encrypt;
         _public.decrypt = decrypt;
         _public.finish = finish;
         _public.generateKey = generateKey;
