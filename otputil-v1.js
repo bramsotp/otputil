@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '1.8.1';
+    const otputilVersion = '1.9.0';
 
     /*  Changes
+        v1.9.0 - improve error logging to jatos; prevent some lint warnings; clean up some commented code
         v1.8.1 - export otpencrypt.encrypt()
         v1.8.0 - try to upload error stack traces to jatos
         v1.7.1 - use sessionData.participant_id instead of participantId
@@ -36,17 +37,54 @@
         console.log('caught error', e);
         window['dbgLastError'] = e;
 
+        const errorVals = {
+            errorEventClass: (e instanceof Object? e.constructor.name : ''),
+            errorEventType: '',
+            errorClass: '',
+            message: '',
+            stack: ''
+        };
+
+        if (e instanceof PromiseRejectionEvent) {
+            errorVals.errorEventType = e.type;
+            if (typeof(e.reason) === 'object') {
+                errorVals.errorClass = e.reason.constructor.name;
+                errorVals.message = e.reason.message;
+                errorVals.stack = e.reason.stack;
+            }
+        }
+        else if (e instanceof ErrorEvent) {
+            errorVals.errorEventType = e.type;
+            errorVals.message = e.message;
+            errorVals.filename = e.filename;
+            errorVals.lineno = e.lineno;
+
+            if (e.error instanceof Error) {
+                errorVals.errorClass = e.error.constructor.name;
+                errorVals.message = e.error.message;
+                errorVals.stack = e.error.stack;
+            }
+        }
+        else {
+            if (typeof(e) === 'object') {
+                errorVals.errorEventType = e.type;
+                errorVals.message = e.message;
+            }
+            else if (typeof(e) === 'string') {
+                errorVals.errorEventType = 'string';
+                errorVals.message = e;
+            }
+        }
+
+        console.debug('errorVals', errorVals);
+
+
         let added = false;
         if (observedErrors.length < ERRORS_ARRAY_MAX) {
             observedErrors.push(new Date().toISOString());
             observedErrors.push(navigator.userAgent);
-            observedErrors.push(e.type);
-            observedErrors.push(e.message);
-            if (e.error && e.error.stack) {
-                observedErrors.push(e.error.stack);
-            }
-            if (e.reason && e.reason.stack) {
-                observedErrors.push(e.reason.stack);
+            for (let key in errorVals) {
+                observedErrors.push(`${key}: ${errorVals[key]}`);
             }
             added = true;
         }
@@ -54,15 +92,8 @@
         const jatos = w['jatos'];
         if (jatos) {
             try {
-                let displayMessage = '';
-                if (e.type !== 'error') {
-                    displayMessage += `(${e.type}) `;
-                }
-                if (e.reason) {
-                    displayMessage += e.reason.message;
-                } else {
-                    displayMessage += e.message;
-                }
+                let displayMessage = `${errorVals.message} (${errorVals.errorClass||''} ${errorVals.type||''}) `;
+
                 jatos.showOverlay({
                     text: "ERROR: " + displayMessage,
                     showImg: false
@@ -90,12 +121,9 @@
 
     // CREATE OTPUTIL
 
-    // @ts-ignore
-    const jatos = w.jatos;
-    // @ts-ignore
-    let jsPsych = w.jsPsych;
-    // @ts-ignore
-    const openpgp = w.openpgp;
+    const jatos = w['jatos'];
+    let jsPsych = w['jsPsych'];
+    const openpgp = w['openpgp'];
 
     // @ts-ignore
     w.otputil = (function(){
@@ -153,10 +181,11 @@
             if (typeof(jsPsych) !== 'object') {
                 return undefined;
             }
-            else if (typeof(jsPsych.version) === 'function') {
+            else if (typeof(jsPsych['version']) === 'function') {
+                // @ts-ignore
                 return jsPsych.version();
             }
-            else if (typeof(jsPsych.getProgressBarCompleted) === 'function') {
+            else if (typeof(jsPsych['getProgressBarCompleted']) === 'function') {
                 return '6.1.0-or-6.2.0';
             }
             else {
@@ -219,18 +248,14 @@
         function info(arg) {
             // this function returns values directly, but in a future version it may need to return a promise
             arg = Object.assign({
-                //taskId:undefined, // at the moment, this goes in custom
-                //task:undefined, // at the moment, this goes in custom
                 timestamp:true, // true/false
                 jatos:true, // true/false; maybe in future 'extended' or 'all' to load ALL values for batch/study/batchjson etc
                 jspsych:true, // true/false
                 browser:true, // true/false
                 otputil:true, // true/false
                 //geo:false, // 'country', true/false // see https://geo.ipify.org/
-                //ip:false, // TODO see https://www.ipify.org/
+                //ip:false, // see https://www.ipify.org/
                 //custom:undefined,
-                //style:'properties' // properties/json
-                //filter: // maybe later
             }, arg||{});
 
             var infoData = {};
@@ -371,12 +396,10 @@
         }
 
         function partialDataEnvelope(data) {
-            //var dataJson = JSON.stringify(data);
             var dataEnvelope = {
                 partialDataType: 'arrayItem',
                 collectionId: _private.sessionId,
                 content: data,
-                //content: dataJson,
                 sequence: _private.sentPartial
             };
             if (_private.sentPartial === 0) {
@@ -392,7 +415,6 @@
             arg = Object.assign({
                 addInteractionEvents: true, // calls otputil.addInteractionEvents()
                 on_finish: undefined, // runs before encryption
-                // _resultsType: 'json', // not a public option // TODO if needed
                 //encryptResults: false,
                 // on_encrypted: undefined, // runs after encryption () // TODO if needed
                 jatosSendResults: true, // true/false/append
@@ -418,9 +440,11 @@
                 console.debug('finished waiting for any pending trial encryption');
 
                 if (arg.addInteractionEvents) {
+                    // @ts-ignore
                     var interactionData = jsPsych.data.getInteractionData().values();
                     console.log('interactionData', interactionData);
                     // TODO: there has to be a better way!
+                    // @ts-ignore
                     jsPsych.data.get().addToLast({interactionData: interactionData});
                 }
 
@@ -429,6 +453,7 @@
                     await arg.on_finish();
                 }
 
+                // @ts-ignore
                 var dataText = jsPsych.data.get().json();
 
                 /*
@@ -473,25 +498,6 @@
                         jatos.startNextComponent();
                         handled = true;
                     }
-                    // else if (arg.jatosContinue === 'smart') {
-                    //     var nextPos = undefined;
-                    //     // jatos.componentPos is 1-based. we want to find next component is active. so we start
-                    //     // with component index (0-based) equal to jatos.componentPos
-                    //     for (var i=jatos.componentPos; i<jatos.componentList.length; i++) {
-                    //         if (jatos.componentList[i].active) {
-                    //             nextPos = i+1; // did I mention that componentPos is 1-based for some reason?
-                    //             break;
-                    //         }
-                    //     }
-                    //     if (nextPos !== undefined) {
-                    //         console.debug('Found "smart" next active compoment, calling startComponentByPos for', nextPos);
-                    //         jatos.startComponentByPos(nextPos);
-                    //     } else {
-                    //         console.debug('Did not find any "smart" next active compoment, calling endStudy');
-                    //         jatos.endStudy();
-                    //     }
-                    //     handled = true;
-                    // }
                     else if (typeof(arg.jatosContinue) === 'object') {
                         console.debug('Calling startComponent or startComponentByPos', arg.jatosContinue);
 
@@ -604,6 +610,7 @@
          */
         function replaceTrialData(trialIndex, newData) {
             var keepProperties = ['trial_type', 'trial_index', 'time_elapsed', 'internal_node_id'];
+            // @ts-ignore
             var d = jsPsych.data.get().filter({trial_index:trialIndex}).values();
             if (d.length == 1) {
                 console.log('replacing trial data');
@@ -893,12 +900,14 @@
                         description: '',
                         parameters: {
                             func: {
+                                // @ts-ignore
                                 type: jsPsych.plugins.parameterType.FUNCTION,
                                 pretty_name: 'Function',
                                 default: undefined,
                                 description: 'Function to call'
                             },
                             async: {
+                                // @ts-ignore
                                 type: jsPsych.plugins.parameterType.BOOL,
                                 pretty_name: 'Asynchronous',
                                 default: false,
@@ -927,6 +936,7 @@
                                 value: return_val
                             };
 
+                            // @ts-ignore
                             jsPsych.finishTrial(trial_data);
                         }
                     };
