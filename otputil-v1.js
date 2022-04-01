@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '1.9.0';
+    const otputilVersion = '1.9.1';
 
     /*  Changes
+        v1.9.1 - add 'throwConsoleErrors' option for prepare(); error logging improvements
         v1.9.0 - improve error logging to jatos; prevent some lint warnings; clean up some commented code
         v1.8.1 - export otpencrypt.encrypt()
         v1.8.0 - try to upload error stack traces to jatos
@@ -29,13 +30,18 @@
 
 
     // CATCH ERRORS
+    const consoleErrOrig = console.error;
 
     const observedErrors = [];
     const ERRORS_ARRAY_MAX = 100;
+    const ERRORS_SEND_DELAY_MS = 50;
+    let errorSendTimer = undefined;
+    let jatosDisplayMessage = undefined;
 
     function observeError(e) {
-        console.log('caught error', e);
+        console.debug('otputil caught error', e);
         window['dbgLastError'] = e;
+        const jatos = w['jatos'];
 
         const errorVals = {
             errorEventClass: (e instanceof Object? e.constructor.name : ''),
@@ -65,6 +71,11 @@
                 errorVals.stack = e.error.stack;
             }
         }
+        else if (e instanceof Error) {
+            errorVals.errorClass = e.constructor.name;
+            errorVals.message = e.message;
+            errorVals.stack = e.stack;
+        }
         else {
             if (typeof(e) === 'object') {
                 errorVals.errorEventType = e.type;
@@ -76,12 +87,14 @@
             }
         }
 
-        console.debug('errorVals', errorVals);
-
+        if (jatos && observedErrors.length === 0) {
+            observedErrors.push(`jatos.componentResultId=${jatos.componentResultId}`);
+            observedErrors.push(`jatos.studyResultId=${jatos.studyResultId}`);
+        }
 
         let added = false;
         if (observedErrors.length < ERRORS_ARRAY_MAX) {
-            observedErrors.push(new Date().toISOString());
+            observedErrors.push(new Date().toISOString() + " ============");
             observedErrors.push(navigator.userAgent);
             for (let key in errorVals) {
                 observedErrors.push(`${key}: ${errorVals[key]}`);
@@ -89,26 +102,34 @@
             added = true;
         }
 
-        const jatos = w['jatos'];
         if (jatos) {
             try {
-                let displayMessage = `${errorVals.message} (${errorVals.errorClass||''} ${errorVals.type||''}) `;
-
+                if (!jatosDisplayMessage) {
+                    jatosDisplayMessage = `${errorVals.message} (${errorVals.errorClass||''} ${errorVals.type||''}) `;
+                }
                 jatos.showOverlay({
-                    text: "ERROR: " + displayMessage,
+                    text: "ERROR: " + jatosDisplayMessage,
                     showImg: false
                 });
-
-                if (added) {
-                    sendObservedErrors();
-                }
             } catch (err) {
-                console.log('Error calling jatos.showOverlay', err);
+                console.warn('Error calling jatos.showOverlay', err);
+            }
+
+            if (added) { // n.b. can't do this if jatos not defined
+                delayedSendObservedErrors();
             }
         }
     }
 
+    function delayedSendObservedErrors() {
+        if (errorSendTimer !== undefined) {
+            clearTimeout(errorSendTimer);
+        }
+        errorSendTimer = setTimeout(sendObservedErrors, ERRORS_SEND_DELAY_MS);
+    }
+
     function sendObservedErrors() {
+        console.debug('otputil uploading error log to jatos');
         const errorsConcat = observedErrors.join("\n\n");
         const errorsBlob = new Blob([errorsConcat]);
         const filename = 'ERRORS.txt';
@@ -140,6 +161,28 @@
         async function prepare(arg) {
             arg = arg || {};
 
+            if (arg.throwConsoleErrors === undefined) {
+                arg.throwConsoleErrors = false;
+            }
+            if (Boolean(arg.throwConsoleErrors)) {
+                if (console.error === consoleErrOrig) {
+                    console.debug('otputil hooking console.error()');
+                    console.error = function() {
+                        const a = Array.from(arguments);
+                        consoleErrOrig.apply(console, a);
+                        if (typeof(a[0]) === 'string') {
+                            //throw new Error(a[0]);
+                            observeError(new Error(a[0])); // but don't throw it!
+                        }
+                        else if (a[0] instanceof Error) {
+                            throw a[0];
+                        }
+                    }
+                } else {
+                    console.debug('otputil will not hook console.error(), looks already modified');
+                }
+            }
+
             if (arg.jsPsych) {
                 jsPsych = arg.jsPsych;
             } else {
@@ -147,7 +190,7 @@
             }
             initOtpCallFunction();
 
-            console.log(`otputil version ${otputilVersion}`);
+            console.info(`otputil version ${otputilVersion}`);
 
             var waitForJatos = typeof(arg.jatos) === 'boolean'? arg.jatos : jatosIsPresent();
             if (waitForJatos) {
@@ -386,7 +429,7 @@
                 // sendPartial
                 if (arg.sendPartial) {
                     if (_private.sentFullData) {
-                        console.error("trialFinisher: Ignoring sendPartial because full results already sent to JATOS!");
+                        console.warn("trialFinisher: Ignoring sendPartial because full results already sent to JATOS!");
                     } else {
                         jatos.appendResultData(JSON.stringify(partialDataEnvelope(data))+"\n");
                     }
@@ -442,7 +485,7 @@
                 if (arg.addInteractionEvents) {
                     // @ts-ignore
                     var interactionData = jsPsych.data.getInteractionData().values();
-                    console.log('interactionData', interactionData);
+                    console.debug('interactionData', interactionData);
                     // TODO: there has to be a better way!
                     // @ts-ignore
                     jsPsych.data.get().addToLast({interactionData: interactionData});
@@ -569,7 +612,7 @@
             var trialIndex = data.trial_index;
 
             var encryptPromise = encrypt(data);
-            console.log('encryptTrialData, got trialIndex/encryptPromise=', trialIndex, encryptPromise);
+            console.debug('encryptTrialData, got trialIndex/encryptPromise=', trialIndex, encryptPromise);
             var replaceDataPromise = encryptPromise.then(function(encrypted) {
                 replaceTrialData(trialIndex, {encryptedData:encrypted});
             });
@@ -613,7 +656,7 @@
             // @ts-ignore
             var d = jsPsych.data.get().filter({trial_index:trialIndex}).values();
             if (d.length == 1) {
-                console.log('replacing trial data');
+                console.debug('replacing trial data');
                 d.forEach(trialData => {
                     Object.keys(trialData).filter(x => !keepProperties.includes(x)).forEach(x => {delete trialData[x]});
                     Object.keys(newData).forEach(x => {trialData[x] = newData[x]});
