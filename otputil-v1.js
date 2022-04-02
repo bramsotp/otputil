@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '1.9.2';
+    const otputilVersion = '1.9.3';
 
     /*  Changes
+        v1.9.3 - don't display (but still log) errors originating from external scripts or browser addons
         v1.9.2 - handle throwConsoleErrors when error thrown before jatos is initialized
         v1.9.1 - add 'throwConsoleErrors' option for prepare(); error logging improvements
         v1.9.0 - improve error logging to jatos; prevent some lint warnings; clean up some commented code
@@ -52,6 +53,8 @@
             stack: ''
         };
 
+        let displayError = true;
+
         if (e instanceof PromiseRejectionEvent) {
             errorVals.errorEventType = e.type;
             if (typeof(e.reason) === 'object') {
@@ -65,6 +68,17 @@
             errorVals.message = e.message;
             errorVals.filename = e.filename;
             errorVals.lineno = e.lineno;
+
+            if (/^Script error/i.test(errorVals.message) && errorVals.lineno === 0) {
+                // it's from a script that is outside the same-origin security context.
+                // it could be from a browser addon, or an external script dependency.
+                // regardless, an error message like this is essentially uninformative.
+                // so: log it but don't make visible to user.
+                // https://stackoverflow.com/a/7778424
+                // https://stackoverflow.com/questions/5913978/cryptic-script-error-reported-in-javascript-in-chrome-and-firefox
+                // https://searchfox.org/mozilla-beta/source/dom/base/nsJSEnvironment.cpp#464
+                displayError = false;
+            }
 
             if (e.error instanceof Error) {
                 errorVals.errorClass = e.error.constructor.name;
@@ -99,21 +113,23 @@
         }
 
         if (jatos && typeof(jatos.onLoad) === 'function') {
-            if (!jatosDisplayMessage) {
-                jatosDisplayMessage = `${errorVals.message} (${errorVals.errorClass||''} ${errorVals.type||''}) `;
-            }
-
-            jatos.onLoad(function() {
-                console.debug('try overlay');
-                try {
-                    jatos.showOverlay({
-                        text: "ERROR: " + jatosDisplayMessage,
-                        showImg: false
-                    });
-                } catch (err) {
-                    console.warn('Error calling jatos.showOverlay', err);
+            if (displayError) {
+                if (!jatosDisplayMessage) {
+                    jatosDisplayMessage = `${errorVals.message} (${errorVals.errorClass||''} ${errorVals.type||''}) `;
                 }
-            });
+
+                jatos.onLoad(function() {
+                    console.debug('try overlay');
+                    try {
+                        jatos.showOverlay({
+                            text: "ERROR: " + jatosDisplayMessage,
+                            showImg: false
+                        });
+                    } catch (err) {
+                        console.warn('Error calling jatos.showOverlay', err);
+                    }
+                });
+            }
 
             if (added) { // n.b. can't do this if jatos not defined
                 jatos.onLoad(delayedSendObservedErrors);
