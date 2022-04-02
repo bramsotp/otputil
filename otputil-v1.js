@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '1.9.1';
+    const otputilVersion = '1.9.2';
 
     /*  Changes
+        v1.9.2 - handle throwConsoleErrors when error thrown before jatos is initialized
         v1.9.1 - add 'throwConsoleErrors' option for prepare(); error logging improvements
         v1.9.0 - improve error logging to jatos; prevent some lint warnings; clean up some commented code
         v1.8.1 - export otpencrypt.encrypt()
@@ -87,11 +88,6 @@
             }
         }
 
-        if (jatos && observedErrors.length === 0) {
-            observedErrors.push(`jatos.componentResultId=${jatos.componentResultId}`);
-            observedErrors.push(`jatos.studyResultId=${jatos.studyResultId}`);
-        }
-
         let added = false;
         if (observedErrors.length < ERRORS_ARRAY_MAX) {
             observedErrors.push(new Date().toISOString() + " ============");
@@ -102,21 +98,25 @@
             added = true;
         }
 
-        if (jatos) {
-            try {
-                if (!jatosDisplayMessage) {
-                    jatosDisplayMessage = `${errorVals.message} (${errorVals.errorClass||''} ${errorVals.type||''}) `;
-                }
-                jatos.showOverlay({
-                    text: "ERROR: " + jatosDisplayMessage,
-                    showImg: false
-                });
-            } catch (err) {
-                console.warn('Error calling jatos.showOverlay', err);
+        if (jatos && typeof(jatos.onLoad) === 'function') {
+            if (!jatosDisplayMessage) {
+                jatosDisplayMessage = `${errorVals.message} (${errorVals.errorClass||''} ${errorVals.type||''}) `;
             }
 
+            jatos.onLoad(function() {
+                console.debug('try overlay');
+                try {
+                    jatos.showOverlay({
+                        text: "ERROR: " + jatosDisplayMessage,
+                        showImg: false
+                    });
+                } catch (err) {
+                    console.warn('Error calling jatos.showOverlay', err);
+                }
+            });
+
             if (added) { // n.b. can't do this if jatos not defined
-                delayedSendObservedErrors();
+                jatos.onLoad(delayedSendObservedErrors);
             }
         }
     }
@@ -130,10 +130,18 @@
 
     function sendObservedErrors() {
         console.debug('otputil uploading error log to jatos');
-        const errorsConcat = observedErrors.join("\n\n");
-        const errorsBlob = new Blob([errorsConcat]);
-        const filename = 'ERRORS.txt';
-        jatos.uploadResultFile(errorsBlob, filename);
+        try {
+            const errorsConcat = [
+                `jatos.componentResultId=${jatos.componentResultId}`,
+                `jatos.studyResultId=${jatos.studyResultId}`
+            ].concat(observedErrors).join("\n\n");
+
+            const errorsBlob = new Blob([errorsConcat]);
+            const filename = 'ERRORS.txt';
+            jatos.uploadResultFile(errorsBlob, filename);
+        } catch (err) {
+            console.warn('Error calling jatos.uploadResultFile', err);
+        }
     }
 
     w.addEventListener('error', observeError);
