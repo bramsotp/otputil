@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '1.9.3';
+    const otputilVersion = '1.9.4';
 
     /*  Changes
+        v1.9.4 - error logging improvements
         v1.9.3 - don't display (but still log) errors originating from external scripts or browser addons
         v1.9.2 - handle throwConsoleErrors when error thrown before jatos is initialized
         v1.9.1 - add 'throwConsoleErrors' option for prepare(); error logging improvements
@@ -109,17 +110,25 @@
             for (let key in errorVals) {
                 observedErrors.push(`${key}: ${errorVals[key]}`);
             }
+            if (!displayError) {
+                observedErrors.push('(not displayed)');
+            }
             added = true;
         }
 
         if (jatos && typeof(jatos.onLoad) === 'function') {
             if (displayError) {
+                // try {
+                //     sessionStorage.setItem('lastError', JSON.stringify(errorVals));
+                //     console.debug('otputil: set lastError successfully', sessionStorage.getItem('lastError'));
+                // } catch (err) {
+                //     console.debug('otputil: error setting lastError', err);
+                // }
                 if (!jatosDisplayMessage) {
                     jatosDisplayMessage = `${errorVals.message} (${errorVals.errorClass||''} ${errorVals.type||''}) `;
                 }
 
                 jatos.onLoad(function() {
-                    console.debug('try overlay');
                     try {
                         jatos.showOverlay({
                             text: "ERROR: " + jatosDisplayMessage,
@@ -129,6 +138,8 @@
                         console.warn('Error calling jatos.showOverlay', err);
                     }
                 });
+            } else {
+                // console.debug('Not displaying error', errorVals);
             }
 
             if (added) { // n.b. can't do this if jatos not defined
@@ -145,19 +156,27 @@
     }
 
     function sendObservedErrors() {
-        console.debug('otputil uploading error log to jatos');
-        try {
-            const errorsConcat = [
-                `jatos.componentResultId=${jatos.componentResultId}`,
-                `jatos.studyResultId=${jatos.studyResultId}`
-            ].concat(observedErrors).join("\n\n");
-
-            const errorsBlob = new Blob([errorsConcat]);
-            const filename = 'ERRORS.txt';
-            jatos.uploadResultFile(errorsBlob, filename);
-        } catch (err) {
-            console.warn('Error calling jatos.uploadResultFile', err);
+        let returnVal = undefined;
+        if (errorSendTimer !== undefined) {
+            clearTimeout(errorSendTimer);
+            errorSendTimer = undefined;
         }
+        if (observedErrors.length > 0) {
+            console.debug('otputil uploading error log to jatos');
+            try {
+                const errorsConcat = [
+                    `jatos.componentResultId=${jatos.componentResultId}`,
+                    `jatos.studyResultId=${jatos.studyResultId}`
+                ].concat(observedErrors).join("\n\n");
+
+                const errorsBlob = new Blob([errorsConcat]);
+                const filename = 'ERRORS.txt';
+                returnVal = jatos.uploadResultFile(errorsBlob, filename);
+            } catch (err) {
+                console.warn('Error calling jatos.uploadResultFile', err);
+            }
+        }
+        return returnVal;
     }
 
     w.addEventListener('error', observeError);
@@ -509,7 +528,6 @@
                 if (arg.addInteractionEvents) {
                     // @ts-ignore
                     var interactionData = jsPsych.data.getInteractionData().values();
-                    console.debug('interactionData', interactionData);
                     // TODO: there has to be a better way!
                     // @ts-ignore
                     jsPsych.data.get().addToLast({interactionData: interactionData});
@@ -554,6 +572,12 @@
                 }
 
                 if (!!arg.jatosContinue) {
+                    try {
+                        await sendObservedErrors(); // make sure any errors have been sent
+                    } catch (err) {
+                        console.warn('error calling sendObservedErrors', err);
+                    }
+
                     var handled = false;
                     if (arg.jatosContinue === 'end') {
                         console.debug('Calling endStudy');
