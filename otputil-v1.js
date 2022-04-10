@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '1.9.4';
+    const otputilVersion = '1.9.5';
 
     /*  Changes
+        v1.9.5 - do not send error log if only errors are from external script
         v1.9.4 - error logging improvements
         v1.9.3 - don't display (but still log) errors originating from external scripts or browser addons
         v1.9.2 - handle throwConsoleErrors when error thrown before jatos is initialized
@@ -36,6 +37,7 @@
     const consoleErrOrig = console.error;
 
     const observedErrors = [];
+    let sentErrors = 0;
     const ERRORS_ARRAY_MAX = 100;
     const ERRORS_SEND_DELAY_MS = 50;
     let errorSendTimer = undefined;
@@ -142,7 +144,8 @@
                 // console.debug('Not displaying error', errorVals);
             }
 
-            if (added) { // n.b. can't do this if jatos not defined
+            if (added && (displayError || sentErrors > 0)) { // n.b. can't do this if jatos not defined
+                sentErrors++;
                 jatos.onLoad(delayedSendObservedErrors);
             }
         }
