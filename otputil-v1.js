@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '1.9.5';
+    const otputilVersion = '2.0.0';
 
     /*  Changes
+        v2.0.0 - prevent multiple calls to jatos.endStudy or jatos.startNextComponent etc
         v1.9.5 - do not send error log if only errors are from external script
         v1.9.4 - error logging improvements
         v1.9.3 - don't display (but still log) errors originating from external scripts or browser addons
@@ -201,7 +202,8 @@
             prepared: false,
             canEncrypt: false,
             sentFullData: false,
-            nextComponentId: undefined
+            nextComponentId: undefined,
+            finishedJatos: false
         };
 
         async function prepare(arg) {
@@ -581,35 +583,37 @@
                         console.warn('error calling sendObservedErrors', err);
                     }
 
-                    var handled = false;
-                    if (arg.jatosContinue === 'end') {
+                    if (_private.finishedJatos) {
+                        console.debug('Already finished component in JATOS');
+                    }
+                    else if (arg.jatosContinue === 'end') {
                         console.debug('Calling endStudy');
                         jatos.endStudy();
-                        handled = true;
+                        _private.finishedJatos = true;
                     }
-                    if (arg.jatosContinue === true || arg.jatosContinue === 'smart') {
+                    else if (arg.jatosContinue === true || arg.jatosContinue === 'smart') {
                         console.debug('Calling startNextComponent');
                         jatos.startNextComponent();
-                        handled = true;
+                        _private.finishedJatos = true;
                     }
                     else if (typeof(arg.jatosContinue) === 'object') {
                         console.debug('Calling startComponent or startComponentByPos', arg.jatosContinue);
 
                         if (typeof(arg.jatosContinue.component) === 'number') {
                             jatos.startComponent(arg.jatosContinue.component);
-                            handled = true;
+                            _private.finishedJatos = true;
                         }
                         if (typeof(arg.jatosContinue.component) === 'string') {
 
                             jatos.startComponent(arg.jatosContinue.component);
-                            handled = true;
+                            _private.finishedJatos = true;
                         }
                         else if (typeof(arg.jatosContinue.pos) === 'number') {
                             jatos.startComponentByPos(arg.jatosContinue.pos);
-                            handled = true;
+                            _private.finishedJatos = true;
                         }
                     }
-                    if (!handled) {
+                    if (!_private.finishedJatos) {
                         console.error('jatosContinue argument value not handled:', arg.jatosContinue);
                     }
                 } else {
