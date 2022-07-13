@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '2.0.0';
+    const otputilVersion = '2.0.1';
 
     /*  Changes
+        v2.0.1 - rename to otputil.js
         v2.0.0 - prevent multiple calls to jatos.endStudy or jatos.startNextComponent etc
         v1.9.5 - do not send error log if only errors are from external script
         v1.9.4 - error logging improvements
