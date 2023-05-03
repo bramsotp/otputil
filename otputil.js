@@ -4,6 +4,8 @@
     const otputilVersion = '2.0.1';
 
     /*  Changes
+        v2.1.0 - The returned taskFinisher function has new 'options' and 'await' fields'; jatosContinue can be a URL and will call jatos.endStudyAndRedirect; Suppress error messages about batch channel (originating from jatos); Change some var to const/let; Remove ts-ignore comments
+                    The options field exposes the original arguments so that they can be changed before the function is called; There are new jatosSuccessfulFlag and jatosMessage options that will be used when calling a jatos function to end the component/study; The await field is an array and await will be called on each item before finishing
         v2.0.1 - rename to otputil.js
         v2.0.0 - prevent multiple calls to jatos.endStudy or jatos.startNextComponent etc
         v1.9.5 - do not send error log if only errors are from external script
@@ -44,6 +46,7 @@
     const ERRORS_SEND_DELAY_MS = 50;
     let errorSendTimer = undefined;
     let jatosDisplayMessage = undefined;
+    const patternDoNotDisplay = new RegExp(/^Batch channel/);
 
     function observeError(e) {
         console.debug('otputil caught error', e);
@@ -105,6 +108,10 @@
                 errorVals.errorEventType = 'string';
                 errorVals.message = e;
             }
+        }
+
+        if (patternDoNotDisplay.test(errorVals.message)) {
+            displayError = false;
         }
 
         let added = false;
@@ -194,7 +201,6 @@
     let jsPsych = w['jsPsych'];
     const openpgp = w['openpgp'];
 
-    // @ts-ignore
     w.otputil = (function(){
         var _public = {
             version: otputilVersion
@@ -250,12 +256,10 @@
 
             if (arg.encryptPublicKey) {
                 console.debug('Calling otpencrypt.setPublicKey');
-                // @ts-ignore
                 await otpencrypt.setPublicKey(arg.encryptPublicKey);
                 _private.canEncrypt = true;
             }
 
-            // @ts-ignore
             _private.nextComponentId = otpComponentOrderManager.getNextComponentId();
             if (_private.nextComponentId === undefined) {
                 console.debug('No custom order detected');
@@ -274,7 +278,6 @@
                 return undefined;
             }
             else if (typeof(jsPsych['version']) === 'function') {
-                // @ts-ignore
                 return jsPsych.version();
             }
             else if (typeof(jsPsych['getProgressBarCompleted']) === 'function') {
@@ -436,14 +439,14 @@
                 arg.encryptIf = true;
             }
 
-            var fn = async function(data) {
+            const fn = async function(data) {
                 // on_finish
                 if (typeof(arg.on_finish) === 'function') {
-                    arg.on_finish(data);
+                    await arg.on_finish(data);
                 }
 
                 // encrypt
-                var willEncrypt = false;
+                let willEncrypt = false;
                 if (arg.encryptIf) {
                     if (arg.encryptIf === true) {
                         willEncrypt = true;
@@ -460,7 +463,6 @@
                         if (!_private.canEncrypt) {
                             throw new Error("Can't encrypt: Private key has not been loaded!");
                         }
-                        // @ts-ignore
                         await otpencrypt.encryptTrialData(data);
                     }
                 }
@@ -488,7 +490,7 @@
         }
 
         function partialDataEnvelope(data) {
-            var dataEnvelope = {
+            const dataEnvelope = {
                 partialDataType: 'arrayItem',
                 collectionId: _private.sessionId,
                 content: data,
@@ -510,7 +512,9 @@
                 //encryptResults: false,
                 // on_encrypted: undefined, // runs after encryption () // TODO if needed
                 jatosSendResults: true, // true/false/append
-                jatosContinue: true, // true/false/end/smart[deprecated]/{component:ID}/{position:pos}; could also be a name though?; could handle fn that gets value
+                jatosContinue: true, // true/false/end/{component:ID}/{position:pos}; could also be a name though?; could handle fn that gets value
+                jatosMessage: undefined, // will be passed to jatos if jatosContinue ends the component
+                jatosSuccessfulFlag: undefined // will be passed to jatosContinue ends the study
             }, arg||{});
 
             if (_private.nextComponentId !== undefined) {
@@ -525,27 +529,25 @@
                 }
             }
 
-            var fn = async function(data) {
+            const awaitPromises = [];
+
+            const fn = async function(data) {
                 console.debug('taskFinisher is starting');
-                // @ts-ignore
                 await otpencrypt.finish();
                 console.debug('finished waiting for any pending trial encryption');
 
                 if (arg.addInteractionEvents) {
-                    // @ts-ignore
-                    var interactionData = jsPsych.data.getInteractionData().values();
+                    const interactionData = jsPsych.data.getInteractionData().values();
                     // TODO: there has to be a better way!
-                    // @ts-ignore
                     jsPsych.data.get().addToLast({interactionData: interactionData});
                 }
 
                 if (typeof(arg.on_finish) === 'function') {
                     console.debug('Calling custom on_finish');
-                    await arg.on_finish();
+                    await arg.on_finish(fn);
                 }
 
-                // @ts-ignore
-                var dataText = jsPsych.data.get().json();
+                const dataText = jsPsych.data.get().json();
 
                 /*
                 // TO ADD IF NEEDED
@@ -553,20 +555,20 @@
                     // await encrypt .finish
                     //await otpencrypt.finish();
                     // need data again if was modified?
-                    var dataText = jsPsych.data.get().json();
+                    const dataText = jsPsych.data.get().json();
                     //if (typeof(arg.on_encrypted) // TODO if needed
                 }
                 */
 
-                if (!!arg.jatosSendResults) {
+                if (Boolean(arg.jatosSendResults)) {
                     if (arg.jatosSendResults === 'append') {
                         console.debug('Sending results via appendResultData');
-                        await jatos.appendResultData(dataText);
+                        awaitPromises.push(jatos.appendResultData(dataText));
                         // add try/catch if we will handle errors
                     }
                     else if (arg.jatosSendResults === true) {
                         console.debug('Sending results via submitResultData');
-                        await jatos.submitResultData(dataText);
+                        awaitPromises.push(jatos.submitResultData(dataText));
                         _private.sentFullData = true;
                         // add try/catch if we will handle errors
                     }
@@ -577,7 +579,11 @@
                     console.debug('jatosSendResults is false, skipping');
                 }
 
-                if (!!arg.jatosContinue) {
+                for (let i=0; i<awaitPromises.length; i++) {
+                    await awaitPromises[i];
+                }
+
+                if (Boolean(arg.jatosContinue)) {
                     try {
                         await sendObservedErrors(); // make sure any errors have been sent
                     } catch (err) {
@@ -589,28 +595,33 @@
                     }
                     else if (arg.jatosContinue === 'end') {
                         console.debug('Calling endStudy');
-                        jatos.endStudy();
+                        jatos.endStudy(arg.jatosSuccessfulFlag, arg.jatosMessage);
                         _private.finishedJatos = true;
                     }
-                    else if (arg.jatosContinue === true || arg.jatosContinue === 'smart') {
+                    else if (/^http/i.test(arg.jatosContinue)) {
+                        console.debug('Calling endStudyAndRedirect');
+                        jatos.endStudyAndRedirect(arg.jatosContinue, arg.jatosSuccessfulFlag, arg.jatosMessage);
+                        _private.finishedJatos = true;
+                    }
+                    else if (arg.jatosContinue === true) {
                         console.debug('Calling startNextComponent');
-                        jatos.startNextComponent();
+                        jatos.startNextComponent(undefined, arg.jatosMessage);
                         _private.finishedJatos = true;
                     }
                     else if (typeof(arg.jatosContinue) === 'object') {
                         console.debug('Calling startComponent or startComponentByPos', arg.jatosContinue);
 
                         if (typeof(arg.jatosContinue.component) === 'number') {
-                            jatos.startComponent(arg.jatosContinue.component);
+                            jatos.startComponent(arg.jatosContinue.component, undefined, arg.jatosMessage);
                             _private.finishedJatos = true;
                         }
                         if (typeof(arg.jatosContinue.component) === 'string') {
 
-                            jatos.startComponent(arg.jatosContinue.component);
+                            jatos.startComponent(arg.jatosContinue.component, undefined, arg.jatosMessage);
                             _private.finishedJatos = true;
                         }
                         else if (typeof(arg.jatosContinue.pos) === 'number') {
-                            jatos.startComponentByPos(arg.jatosContinue.pos);
+                            jatos.startComponentByPos(arg.jatosContinue.pos, undefined, arg.jatosMessage);
                             _private.finishedJatos = true;
                         }
                     }
@@ -621,11 +632,13 @@
                     console.debug('jatosContinue is false, skipping');
                 }
             };
+            fn.options = arg;
+            fn.await = awaitPromises;
             return fn;
         }
 
         function resolveValue(x) {
-            var value = (typeof(x)==='function'? x() : x);
+            const value = (typeof(x)==='function'? x() : x);
             return value;
         }
 
@@ -637,16 +650,14 @@
         _public.getSessionVar = getSessionVar;
         _public.setSessionVar = setSessionVar;
         return _public;
-    // @ts-ignore
     })();
 
-    // @ts-ignore
     w.otpencrypt = (function(){
         var _public = {};
 
-        var allEncryptPromises = [];
-        var publicKeys = undefined;
-        var privateKeys = undefined;
+        const allEncryptPromises = [];
+        let publicKeys = undefined;
+        let privateKeys = undefined;
         //var canEncrypt = false;
 
         async function init(opt) {
@@ -660,16 +671,16 @@
             if (!/-----BEGIN PGP PUBLIC KEY BLOCK-----/.test(keyArmored)) {
                 throw new Error("Public key is not in correct format");
             }
-            var keyResult = await openpgp.key.readArmored(keyArmored);
+            const keyResult = await openpgp.key.readArmored(keyArmored);
             publicKeys = keyResult.keys;
         }
 
         function encryptTrialData(data) {
-            var trialIndex = data.trial_index;
+            const trialIndex = data.trial_index;
 
-            var encryptPromise = encrypt(data);
+            const encryptPromise = encrypt(data);
             console.debug('encryptTrialData, got trialIndex/encryptPromise=', trialIndex, encryptPromise);
-            var replaceDataPromise = encryptPromise.then(function(encrypted) {
+            const replaceDataPromise = encryptPromise.then(function(encrypted) {
                 replaceTrialData(trialIndex, {encryptedData:encrypted});
             });
             allEncryptPromises.push(replaceDataPromise);
@@ -683,7 +694,7 @@
          * @return {Promise} The Promise returned from openpgp.encrypt
          */
         function encrypt(data) {
-            var dataString = '';
+            let dataString = '';
             if (typeof(data) === 'object') {
                 dataString = JSON.stringify(data);
             }
@@ -708,9 +719,8 @@
          * @param {object} newData Object containing the replacement data
          */
         function replaceTrialData(trialIndex, newData) {
-            var keepProperties = ['trial_type', 'trial_index', 'time_elapsed', 'internal_node_id'];
-            // @ts-ignore
-            var d = jsPsych.data.get().filter({trial_index:trialIndex}).values();
+            const keepProperties = ['trial_type', 'trial_index', 'time_elapsed', 'internal_node_id'];
+            const d = jsPsych.data.get().filter({trial_index:trialIndex}).values();
             if (d.length == 1) {
                 console.debug('replacing trial data');
                 d.forEach(trialData => {
@@ -731,13 +741,13 @@
             if (!/-----BEGIN PGP PRIVATE KEY BLOCK-----/.test(keyArmored)) {
                 throw new Error("Private key is not in correct format");
             }
-            var keyResult = await openpgp.key.readArmored(keyArmored);
+            const keyResult = await openpgp.key.readArmored(keyArmored);
             privateKeys = keyResult.keys;
             return privateKeys;
         }
 
         async function decrypt(encryptedArmored) {
-            var val = openpgp.decrypt({
+            const val = openpgp.decrypt({
                 message: await openpgp.message.readArmored(encryptedArmored),
                 privateKeys: privateKeys
             }).then(x => x.data);
@@ -750,7 +760,7 @@
             if (typeof(args.name) !== 'string') {
                 throw new Error('generateKey: "name" argument is required');
             }
-            var k = await openpgp.generateKey({
+            const k = await openpgp.generateKey({
                 passphrase: args.passphrase,
                 curve: args.curve,
                 userIds: [{
@@ -773,14 +783,12 @@
         _public.finish = finish;
         _public.generateKey = generateKey;
         return _public;
-    // @ts-ignore
     })();
 
-    // @ts-ignore
     w.otpComponentOrderManager = (function(){
-        var _public = {};
+        const _public = {};
 
-        var _private = {
+        const _private = {
             checked: false,
             nextComponentId: undefined
         //  hasCustomOrder: undefined,
@@ -802,13 +810,13 @@
             if (!jatos) { return; }
 
             // is there a custom order defined in the study json? if not, we have nothing to do
-            var o = jatos.studyJsonInput
+            const o = jatos.studyJsonInput
             if (!(o instanceof Object) || !(o.otputil_order instanceof Object)) { return; }
 
             // At this point we know that custom order(s) are defined in the study JSON.
             // Any inconsistencies from now on are errors.
 
-            var cl = jatos.componentList;
+            const cl = jatos.componentList;
             if (!(cl instanceof Array)) {
                 throw new Error('jatos object does not contain componentList');
             }
@@ -820,10 +828,10 @@
                 throw new Error('Malformed otputil_order in study json (uuid parameter missing)');
             }
 
-            var orderCode = jatos.urlQueryParameters.order;
+            let orderCode = jatos.urlQueryParameters.order;
             if (typeof(orderCode) !== 'string') {
                 if (jatos.workerType === 'Jatos') {
-                    var allOrderCodes = Object.keys(o.otputil_order.order);
+                    const allOrderCodes = Object.keys(o.otputil_order.order);
                     orderCode = allOrderCodes[0];
                     console.warn(`Component is running with workerType=Jatos, forcing first custom order: ${orderCode}`);
                 } else {
@@ -999,14 +1007,12 @@
                         description: '',
                         parameters: {
                             func: {
-                                // @ts-ignore
                                 type: jsPsych.plugins.parameterType.FUNCTION,
                                 pretty_name: 'Function',
                                 default: undefined,
                                 description: 'Function to call'
                             },
                             async: {
-                                // @ts-ignore
                                 type: jsPsych.plugins.parameterType.BOOL,
                                 pretty_name: 'Asynchronous',
                                 default: false,
@@ -1035,7 +1041,6 @@
                                 value: return_val
                             };
 
-                            // @ts-ignore
                             jsPsych.finishTrial(trial_data);
                         }
                     };
