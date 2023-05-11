@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '2.0.1';
+    const otputilVersion = '2.1.1';
 
     /*  Changes
+        v2.1.1 - Fix version!
         v2.1.0 - The returned taskFinisher function has new 'options' and 'await' fields'; jatosContinue can be a URL and will call jatos.endStudyAndRedirect; Suppress error messages about batch channel (originating from jatos); Change some var to const/let; Remove ts-ignore comments
                     The options field exposes the original arguments so that they can be changed before the function is called; There are new jatosSuccessfulFlag and jatosMessage options that will be used when calling a jatos function to end the component/study; The await field is an array and await will be called on each item before finishing
         v2.0.1 - rename to otputil.js
