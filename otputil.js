@@ -1,31 +1,32 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '2.1.1';
+    const otputilVersion = '2.2.0';
 
     /*  Changes
+        v2.2.0 - Add taskFinisher.addMessage() and manage JATOS messages through session; addInteractionEvents adds new item in data array
         v2.1.1 - Fix version!
         v2.1.0 - The returned taskFinisher function has new 'options' and 'await' fields'; jatosContinue can be a URL and will call jatos.endStudyAndRedirect; Suppress error messages about batch channel (originating from jatos); Change some var to const/let; Remove ts-ignore comments
                     The options field exposes the original arguments so that they can be changed before the function is called; There are new jatosSuccessfulFlag and jatosMessage options that will be used when calling a jatos function to end the component/study; The await field is an array and await will be called on each item before finishing
-        v2.0.1 - rename to otputil.js
-        v2.0.0 - prevent multiple calls to jatos.endStudy or jatos.startNextComponent etc
-        v1.9.5 - do not send error log if only errors are from external script
-        v1.9.4 - error logging improvements
-        v1.9.3 - don't display (but still log) errors originating from external scripts or browser addons
-        v1.9.2 - handle throwConsoleErrors when error thrown before jatos is initialized
-        v1.9.1 - add 'throwConsoleErrors' option for prepare(); error logging improvements
-        v1.9.0 - improve error logging to jatos; prevent some lint warnings; clean up some commented code
-        v1.8.1 - export otpencrypt.encrypt()
-        v1.8.0 - try to upload error stack traces to jatos
-        v1.7.1 - use sessionData.participant_id instead of participantId
+        v2.0.1 - Rename to otputil.js
+        v2.0.0 - Prevent multiple calls to jatos.endStudy or jatos.startNextComponent etc
+        v1.9.5 - Do not send error log if only errors are from external script
+        v1.9.4 - Error logging improvements
+        v1.9.3 - Don't display (but still log) errors originating from external scripts or browser addons
+        v1.9.2 - Handle throwConsoleErrors when error thrown before jatos is initialized
+        v1.9.1 - Add 'throwConsoleErrors' option for prepare(); error logging improvements
+        v1.9.0 - Improve error logging to jatos; prevent some lint warnings; clean up some commented code
+        v1.8.1 - Export otpencrypt.encrypt()
+        v1.8.0 - Try to upload error stack traces to jatos
+        v1.7.1 - Use sessionData.participant_id instead of participantId
         v1.7.0 - infoTrial includes participantId from sessionData if present
-        v1.6.1 - add optional defaultValue argument to getSessionVar
-        v1.6.0 - add getSessionVar, setSessionVar
-        v1.5.0 - remove 1000ms delay before calling jatos.onLoad(); adapt to work with jsPsych 7.0 (keeping 6.x compatibility); add debugData option for trialFinisher
-        v1.4.0 - add custom order via jatos study json; catch error/unhandledrejection and display via jatos.showOverlay; use strict
-        v1.3.0 - add "browser_userAgent" for infoTrial
-        v1.2.0 - add "jatos_workerType" for infoTrial
-        v1.1.0 - add "timestamp" option for infoTrial; generateKey accepts password; setPrivateKey returns the key(s)
+        v1.6.1 - Add optional defaultValue argument to getSessionVar
+        v1.6.0 - Add getSessionVar, setSessionVar
+        v1.5.0 - Remove 1000ms delay before calling jatos.onLoad(); adapt to work with jsPsych 7.0 (keeping 6.x compatibility); add debugData option for trialFinisher
+        v1.4.0 - Add custom order via jatos study json; catch error/unhandledrejection and display via jatos.showOverlay; use strict
+        v1.3.0 - Add "browser_userAgent" for infoTrial
+        v1.2.0 - Add "jatos_workerType" for infoTrial
+        v1.1.0 - Add "timestamp" option for infoTrial; generateKey accepts password; setPrivateKey returns the key(s)
 
         TODO
         handle missing PGP? already does?
@@ -506,12 +507,25 @@
 
         // addInteractionEvents > on_finish > encryptResults > on_encrypted > sendResults > on_finish_final > jatosContinue
         // n.b. this doesn't have to run in the jsPsych main on_finish, it could be run earlier e.g. to ensure data are sent before participant sees a "thank you" screen
+        /**
+         * Creates a taskFinisher function that can be used as a jsPsych study on_finish handler.
+         * The sequence of steps is addInteractionEvents > on_finish > sendResults > > await > jatosContinue
+         *
+         * @param {object} [options] - Optional arguments object
+         * @param {boolean} [options.addInteractionEvents] - If true, calls otputil.addInteractionEvents()
+         * @param {function} [options.on_finish] - Optional callback function; will be called with the trialFinisher instance as argument
+         * @param {boolean|string} [options.jatosSendResults] - true (default), false, or 'append'
+         * @param {boolean|string|object} [options.jatosContinue] - true/false/'end'/{component:ID}/{position:pos}
+         * @param {string|string[]} [options.jatosMessage] - will be passed to jatos if jatosContinue ends the component
+         * @param {boolean} [options.jatosSuccessfulFlag] - will be passed to jatosContinue ends the study
+         * @return {function}
+         */
         function taskFinisher(arg) {
             arg = Object.assign({
                 addInteractionEvents: true, // calls otputil.addInteractionEvents()
                 on_finish: undefined, // runs before encryption
-                //encryptResults: false,
-                // on_encrypted: undefined, // runs after encryption () // TODO if needed
+                //encryptResults: false, // not currently implemented
+                // on_encrypted: undefined, // runs after encryption () // not currently implemented
                 jatosSendResults: true, // true/false/append
                 jatosContinue: true, // true/false/end/{component:ID}/{position:pos}; could also be a name though?; could handle fn that gets value
                 jatosMessage: undefined, // will be passed to jatos if jatosContinue ends the component
@@ -531,6 +545,10 @@
             }
 
             const awaitPromises = [];
+            const messages = {
+                component: [],
+                session: []
+            };
 
             const fn = async function(data) {
                 console.debug('taskFinisher is starting');
@@ -539,8 +557,7 @@
 
                 if (arg.addInteractionEvents) {
                     const interactionData = jsPsych.data.getInteractionData().values();
-                    // TODO: there has to be a better way!
-                    jsPsych.data.get().addToLast({interactionData: interactionData});
+                    jsPsych.data.get().values().push({interactionData: interactionData});
                 }
 
                 if (typeof(arg.on_finish) === 'function') {
@@ -582,6 +599,37 @@
 
                 for (let i=0; i<awaitPromises.length; i++) {
                     await awaitPromises[i];
+                }
+
+                // see jatos.js startNextComponent()
+                const lastActiveComponent = jatos.componentList.slice().reverse()
+                            .find(function (component) { return component.active; });
+                const isLastComponent = jatos.componentPos >= lastActiveComponent.position;
+
+                // update session messages
+                messages.session = uniqueArray(getSessionVar('otpSessionMessages', []).concat(messages.session));
+                if (messages.session.length > 0) {
+                    setSessionVar('otpSessionMessages', messages.session);
+                }
+
+                // copy jatosMessage to component messages
+                if (arg.jatosMessage !== undefined) {
+                    if (arg.jatosMessage instanceof Array) {
+                        arg.jatosMessage.forEach(message => messages.component.push(message));
+                    } else {
+                        messages.component.push(arg.jatosMessage);
+                    }
+                }
+
+                // add session messages if this is the final component
+                // (because as of jatos v3.8.4 the message of the final component is used to set the session message)
+                if (isLastComponent && messages.session.length > 0) {
+                    messages.component = uniqueArray(messages.session.concat(messages.component));
+                }
+
+                // finalize jatosMessage
+                if (messages.component.length > 0) {
+                    arg.jatosMessage = messages.component.join(', ');
                 }
 
                 if (Boolean(arg.jatosContinue)) {
@@ -635,7 +683,35 @@
             };
             fn.options = arg;
             fn.await = awaitPromises;
+
+            /**
+            * Adds a message to be added in the component's JATOS message. All messages will be concatenated with commas.
+            * Any messages set with persistToSession will be saved in a session variable to be prepended in the
+            * message list of the final component (which will be displayed in JATOS as the session message).
+            *
+            * @param {string} message - Message text
+            * @param {boolean} persistToSession - If true, the message will be added to the session message list
+            */
+            fn.addMessage = function(message, persistToSession) {
+                messages.component.push(message);
+                if (persistToSession) {
+                    messages.session.push(message);
+                }
+            };
             return fn;
+        }
+
+        function uniqueArray(ar) {
+            // https://stackoverflow.com/a/43046408
+            const j = {};
+
+            ar.forEach(v => {
+                j[v + '::' + typeof(v)] = v;
+            });
+
+            return Object.keys(j).map(function(v){
+                return j[v];
+            });
         }
 
         function resolveValue(x) {
