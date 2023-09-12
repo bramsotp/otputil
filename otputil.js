@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '2.2.0';
+    const otputilVersion = '2.2.1';
 
     /*  Changes
+        v2.2.1 - taskFinisher jatosContinue can be 'endOnly' to await jatos.endStudyAjax; jatosSuccessfulFlag defaults to true
         v2.2.0 - Add taskFinisher.addMessage() and manage JATOS messages through session; addInteractionEvents adds new item in data array
         v2.1.1 - Fix version!
         v2.1.0 - The returned taskFinisher function has new 'options' and 'await' fields'; jatosContinue can be a URL and will call jatos.endStudyAndRedirect; Suppress error messages about batch channel (originating from jatos); Change some var to const/let; Remove ts-ignore comments
@@ -515,7 +516,7 @@
          * @param {boolean} [options.addInteractionEvents] - If true, calls otputil.addInteractionEvents()
          * @param {function} [options.on_finish] - Optional callback function; will be called with the trialFinisher instance as argument
          * @param {boolean|string} [options.jatosSendResults] - true (default), false, or 'append'
-         * @param {boolean|string|object} [options.jatosContinue] - true/false/'end'/{component:ID}/{position:pos}
+         * @param {boolean|string|object|function} [options.jatosContinue] - true/false/'end'/'endOnly'/{component:ID}/{position:pos}
          * @param {string|string[]} [options.jatosMessage] - will be passed to jatos if jatosContinue ends the component
          * @param {boolean} [options.jatosSuccessfulFlag] - will be passed to jatosContinue ends the study
          * @return {function}
@@ -527,9 +528,9 @@
                 //encryptResults: false, // not currently implemented
                 // on_encrypted: undefined, // runs after encryption () // not currently implemented
                 jatosSendResults: true, // true/false/append
-                jatosContinue: true, // true/false/end/{component:ID}/{position:pos}; could also be a name though?; could handle fn that gets value
+                jatosContinue: true, // true/false/end/endOnly/{component:ID}/{position:pos}
                 jatosMessage: undefined, // will be passed to jatos if jatosContinue ends the component
-                jatosSuccessfulFlag: undefined // will be passed to jatosContinue ends the study
+                jatosSuccessfulFlag: true // will be passed to jatosContinue ends the study
             }, arg||{});
 
             if (_private.nextComponentId !== undefined) {
@@ -645,6 +646,11 @@
                     else if (arg.jatosContinue === 'end') {
                         console.debug('Calling endStudy');
                         jatos.endStudy(arg.jatosSuccessfulFlag, arg.jatosMessage);
+                        _private.finishedJatos = true;
+                    }
+                    else if (arg.jatosContinue === 'endOnly') {
+                        console.debug('Calling endStudyAjax without callback');
+                        await jatos.endStudyAjax(arg.jatosSuccessfulFlag, arg.jatosMessage);
                         _private.finishedJatos = true;
                     }
                     else if (/^http/i.test(arg.jatosContinue)) {
