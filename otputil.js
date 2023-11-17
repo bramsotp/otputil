@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '2.2.1';
+    const otputilVersion = '2.2.2';
 
     /*  Changes
+        v2.2.2 - Reduce log output
         v2.2.1 - taskFinisher jatosContinue can be 'endOnly' to await jatos.endStudyAjax; jatosSuccessfulFlag defaults to true
         v2.2.0 - Add taskFinisher.addMessage() and manage JATOS messages through session; addInteractionEvents adds new item in data array
         v2.1.1 - Fix version!
@@ -252,7 +253,7 @@
 
             var waitForJatos = typeof(arg.jatos) === 'boolean'? arg.jatos : jatosIsPresent();
             if (waitForJatos) {
-                console.debug('Calling jatosOnloadPromise');
+                // console.debug('Calling jatosOnloadPromise');
                 await jatosOnloadPromise();
                 //console.debug('jatosOnloadPromise resolved');
             }
@@ -271,7 +272,7 @@
             }
 
             _private.sessionId = componentSessionId();
-            console.debug('sessionId=',_private.sessionId);
+            // console.debug('sessionId=',_private.sessionId);
             _private.sentPartial = 0;
             _private.prepared = true;
         }
@@ -552,9 +553,9 @@
             };
 
             const fn = async function(data) {
-                console.debug('taskFinisher is starting');
+                // console.debug('taskFinisher is starting');
                 await otpencrypt.finish();
-                console.debug('finished waiting for any pending trial encryption');
+                // console.debug('finished waiting for any pending trial encryption');
 
                 if (arg.addInteractionEvents) {
                     const interactionData = jsPsych.data.getInteractionData().values();
@@ -562,7 +563,7 @@
                 }
 
                 if (typeof(arg.on_finish) === 'function') {
-                    console.debug('Calling custom on_finish');
+                    // console.debug('Calling custom on_finish');
                     await arg.on_finish(fn);
                 }
 
@@ -581,12 +582,12 @@
 
                 if (Boolean(arg.jatosSendResults)) {
                     if (arg.jatosSendResults === 'append') {
-                        console.debug('Sending results via appendResultData');
+                        // console.debug('Sending results via appendResultData');
                         awaitPromises.push(jatos.appendResultData(dataText));
                         // add try/catch if we will handle errors
                     }
                     else if (arg.jatosSendResults === true) {
-                        console.debug('Sending results via submitResultData');
+                        // console.debug('Sending results via submitResultData');
                         awaitPromises.push(jatos.submitResultData(dataText));
                         _private.sentFullData = true;
                         // add try/catch if we will handle errors
@@ -762,7 +763,7 @@
             const trialIndex = data.trial_index;
 
             const encryptPromise = encrypt(data);
-            console.debug('encryptTrialData, got trialIndex/encryptPromise=', trialIndex, encryptPromise);
+            // console.debug('encryptTrialData, got trialIndex/encryptPromise=', trialIndex, encryptPromise);
             const replaceDataPromise = encryptPromise.then(function(encrypted) {
                 replaceTrialData(trialIndex, {encryptedData:encrypted});
             });
@@ -805,7 +806,7 @@
             const keepProperties = ['trial_type', 'trial_index', 'time_elapsed', 'internal_node_id'];
             const d = jsPsych.data.get().filter({trial_index:trialIndex}).values();
             if (d.length == 1) {
-                console.debug('replacing trial data');
+                console.debug('Replacing trial data');
                 d.forEach(trialData => {
                     Object.keys(trialData).filter(x => !keepProperties.includes(x)).forEach(x => {delete trialData[x]});
                     Object.keys(newData).forEach(x => {trialData[x] = newData[x]});
@@ -966,7 +967,7 @@
                     uuidNext = thisUuid;
                 }
             }
-            console.debug(`order '${orderCode}': iCurrent=${iCurrent}; uuidFirst=${uuidFirst}; uuidCurrent=${uuidCurrent}; uuidNext=${uuidNext}`);
+            console.debug(`Order '${orderCode}': iCurrent=${iCurrent}; uuidFirst=${uuidFirst}; uuidCurrent=${uuidCurrent}; uuidNext=${uuidNext}`);
 
             // validate componentList and find componentId for uuidNext
             if (uuidFirst !== cl[0].uuid) {
@@ -999,7 +1000,7 @@
             if (_private.nextComponentId === undefined) {
                 throw new Error(`Component id for next component not found; searched for uuid ${uuidNext}`);
             }
-            console.debug(`nextComponentId=${_private.nextComponentId}`);
+            // console.debug(`nextComponentId=${_private.nextComponentId}`);
         };
 
         return _public;
