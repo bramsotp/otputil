@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '2.2.2';
+    const otputilVersion = '2.2.3';
 
     /*  Changes
+        v2.2.3 - Avoid warning in jsPsych v8.x from embedded otp-call-function plugin
         v2.2.2 - Reduce log output
         v2.2.1 - taskFinisher jatosContinue can be 'endOnly' to await jatos.endStudyAjax; jatosSuccessfulFlag defaults to true
         v2.2.0 - Add taskFinisher.addMessage() and manage JATOS messages through session; addInteractionEvents adds new item in data array
@@ -1028,6 +1029,7 @@
 
                     const info = {
                         name: "otp-call-function",
+                        version: "1.0.1",
                         parameters: {
                             /** Function to call */
                             func: {
@@ -1041,6 +1043,12 @@
                                 pretty_name: "Asynchronous",
                                 default: false,
                             },
+                        },
+                        data: {
+                            value: {
+                                type: jspsych.ParameterType.COMPLEX,
+                                default: void 0
+                            }
                         },
                     };
                     /**
