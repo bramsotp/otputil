@@ -1,9 +1,10 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '2.2.3';
+    const otputilVersion = '2.3.0';
 
     /*  Changes
+        v2.3.0 - Add screenWakeLock option (default true)
         v2.2.3 - Avoid warning in jsPsych v8.x from embedded otp-call-function plugin
         v2.2.2 - Reduce log output
         v2.2.1 - taskFinisher jatosContinue can be 'endOnly' to await jatos.endStudyAjax; jatosSuccessfulFlag defaults to true
@@ -215,7 +216,9 @@
             canEncrypt: false,
             sentFullData: false,
             nextComponentId: undefined,
-            finishedJatos: false
+            finishedJatos: false,
+            useScreenWakeLock: true,
+            wakeLock: undefined
         };
 
         async function prepare(arg) {
@@ -254,9 +257,7 @@
 
             var waitForJatos = typeof(arg.jatos) === 'boolean'? arg.jatos : jatosIsPresent();
             if (waitForJatos) {
-                // console.debug('Calling jatosOnloadPromise');
                 await jatosOnloadPromise();
-                //console.debug('jatosOnloadPromise resolved');
             }
 
             if (arg.encryptPublicKey) {
@@ -270,6 +271,34 @@
                 console.debug('No custom order detected');
             } else {
                 console.debug(`Custom order detected; next component id=${_private.nextComponentId}`);
+            }
+
+            if (arg.screenWakeLock !== undefined) {
+                _private.useScreenWakeLock = Boolean(arg.screenWakeLock) && ('wakeLock' in navigator);
+            }
+            if (_private.useScreenWakeLock) {
+                const getWakeLock = async function() {
+                    _private.wakeLock = undefined;
+                    try {
+                        _private.wakeLock = await navigator.wakeLock.request('screen');
+                        console.debug('Got screen wake lock');
+                    } catch (err) {
+                        // The Wake Lock request has failed - usually system related, such as battery.
+                        console.debug('Failed to get screen wake lock', err);
+                    }
+                    // if (_private.wakeLock !== undefined) {
+                    //     _private.wakeLock.addEventListener('release', () => {
+                    //         console.debug('Screen wake lock released!');
+                    //     });
+                    // }
+                };
+                document.addEventListener('visibilitychange', async function() {
+                    if (_private.wakeLock !== undefined && _private.wakeLock.released && document.visibilityState === 'visible') {
+                        console.debug('Re-requesting wake lock');
+                        await getWakeLock();
+                    }
+                });
+                await getWakeLock();
             }
 
             _private.sessionId = componentSessionId();
