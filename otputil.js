@@ -4,6 +4,7 @@
     const otputilVersion = '2.3.0';
 
     /*  Changes
+        v2.3.1 - taskFinisher adds session messages when session is manually ended
         v2.3.0 - Add screenWakeLock option (default true)
         v2.2.3 - Avoid warning in jsPsych v8.x from embedded otp-call-function plugin
         v2.2.2 - Reduce log output
@@ -636,8 +637,8 @@
                 // see jatos.js startNextComponent()
                 const lastActiveComponent = jatos.componentList.slice().reverse()
                             .find(function (component) { return component.active; });
-                const isLastComponent = jatos.componentPos >= lastActiveComponent.position;
-
+                const isManualSessionEnd = (arg.jatosContinue === 'end') || (arg.jatosContinue === 'endOnly');
+                const isLastComponent = isManualSessionEnd || jatos.componentPos >= lastActiveComponent.position;
                 // update session messages
                 messages.session = uniqueArray(getSessionVar('otpSessionMessages', []).concat(messages.session));
                 if (messages.session.length > 0) {
