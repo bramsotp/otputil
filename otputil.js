@@ -1,9 +1,9 @@
 'use strict';
 (function() {
 
-    const otputilVersion = '2.3.0';
-
+    const otputilVersion = '2.3.2';
     /*  Changes
+        v2.3.2 - Fix version!
         v2.3.1 - taskFinisher adds session messages when session is manually ended
         v2.3.0 - Add screenWakeLock option (default true)
         v2.2.3 - Avoid warning in jsPsych v8.x from embedded otp-call-function plugin
